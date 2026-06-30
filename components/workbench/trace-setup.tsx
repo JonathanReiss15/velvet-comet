@@ -55,7 +55,7 @@ export function TraceSetup(props: {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {props.hasReport ? (
+            {props.hasReport || props.isRunning ? (
               <Button
                 type="button"
                 variant="secondary"

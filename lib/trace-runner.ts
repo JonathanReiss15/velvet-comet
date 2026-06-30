@@ -18,6 +18,9 @@ import {
 } from "@/lib/trace-schema";
 
 type EmitTraceEvent = (event: TraceStreamEvent) => void | Promise<void>;
+type RunTraceOptions = {
+  signal?: AbortSignal;
+};
 
 export async function runTrace(input: TraceRequestInput): Promise<TraceReport> {
   return runTraceWithEvents(input);
@@ -26,6 +29,7 @@ export async function runTrace(input: TraceRequestInput): Promise<TraceReport> {
 export async function runTraceWithEvents(
   input: TraceRequestInput,
   onEvent?: EmitTraceEvent,
+  options: RunTraceOptions = {},
 ): Promise<TraceReport> {
   const id = `trace_${Date.now().toString(36)}`;
   const firecrawl = { ...defaultFirecrawlOptions, ...input.firecrawl };
@@ -47,7 +51,7 @@ export async function runTraceWithEvents(
     throw error;
   }
 
-  return runLiveTrace({ ...input, firecrawl }, actions, id, onEvent);
+  return runLiveTrace({ ...input, firecrawl }, actions, id, onEvent, options);
 }
 
 async function runLiveTrace(
@@ -55,6 +59,7 @@ async function runLiveTrace(
   actions: FirecrawlAction[],
   id: string,
   onEvent?: EmitTraceEvent,
+  options: RunTraceOptions = {},
 ): Promise<TraceReport> {
   const client = new FirecrawlTraceClient();
   const createdAt = new Date().toISOString();
@@ -75,6 +80,7 @@ async function runLiveTrace(
 
   try {
     for (let index = 0; index < actions.length; index += 1) {
+      throwIfAborted(options.signal);
       const action = actions[index];
       const startedAt = Date.now();
       let raw: unknown;
@@ -94,6 +100,7 @@ async function runLiveTrace(
         raw = await client.scrapeWithActions(
           input,
           actions.slice(0, index + 1),
+          options.signal,
         );
         firecrawlCalls += 1;
         step = scrapeResponseToStep({
@@ -106,6 +113,7 @@ async function runLiveTrace(
         });
         scrapeId = scrapeId ?? extractScrapeId(raw);
       } catch (error) {
+        if (isAbortError(error) || options.signal?.aborted) throw error;
         firecrawlCalls += 1;
         const message = error instanceof Error ? error.message : String(error);
         const previousStep = steps[steps.length - 1];
@@ -182,6 +190,7 @@ async function runLiveTrace(
       });
     }
   } catch (error) {
+    if (isAbortError(error) || options.signal?.aborted) throw error;
     const message = error instanceof Error ? error.message : String(error);
     if (steps.length === 0) {
       const report = firecrawlErrorReport({
@@ -270,6 +279,15 @@ async function runLiveTrace(
     report: parsedReport,
   });
   return parsedReport;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined) {
+  if (!signal?.aborted) return;
+  throw new DOMException("Trace request was aborted.", "AbortError");
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 async function emitTraceEvent(

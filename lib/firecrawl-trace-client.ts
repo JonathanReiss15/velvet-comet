@@ -13,7 +13,11 @@ type FirecrawlResponse = {
 export class FirecrawlTraceClient {
   constructor(private readonly apiKey = process.env.FIRECRAWL_API_KEY) {}
 
-  async scrapeWithActions(request: TraceRequestInput, actions: Array<Record<string, unknown>>) {
+  async scrapeWithActions(
+    request: TraceRequestInput,
+    actions: Array<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ) {
     if (!this.apiKey) throw new Error("FIRECRAWL_API_KEY is required for live mode.");
 
     const body = {
@@ -33,23 +37,37 @@ export class FirecrawlTraceClient {
     return this.fetchJson("/scrape", {
       method: "POST",
       body: JSON.stringify(body),
-      timeoutMs: request.firecrawl.timeout
+      timeoutMs: request.firecrawl.timeout,
+      signal
     });
   }
 
   private async fetchJson(path: string, init: RequestInit & { timeoutMs: number }) {
     if (!this.apiKey) throw new Error("FIRECRAWL_API_KEY is required for live mode.");
 
+    const { timeoutMs: requestTimeoutMs, signal, ...requestInit } = init;
     const controller = new AbortController();
-    const timeoutMs = init.timeoutMs + 5000;
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutMs = requestTimeoutMs + 5000;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const abortFromUpstream = () => controller.abort();
+
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener("abort", abortFromUpstream, { once: true });
+    }
+
     try {
       const response = await fetch(`${FIRECRAWL_BASE_URL}${path}`, {
-        ...init,
+        ...requestInit,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
-          ...(init.headers ?? {})
+          ...(requestInit.headers ?? {})
         },
         signal: controller.signal
       });
@@ -61,12 +79,13 @@ export class FirecrawlTraceClient {
       }
       return (json ?? {}) as FirecrawlResponse;
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (error instanceof Error && error.name === "AbortError" && timedOut) {
         throw new Error(`Client timeout after ${timeoutMs}ms waiting for Firecrawl response.`);
       }
       throw error;
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortFromUpstream);
     }
   }
 }

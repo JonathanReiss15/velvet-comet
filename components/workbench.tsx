@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -50,6 +50,8 @@ export function Workbench() {
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [redactedExport, setRedactedExport] = useState(true);
+  const runControllerRef = useRef<AbortController | null>(null);
+  const runTokenRef = useRef(0);
 
   useEffect(() => {
     fetch("/api/examples")
@@ -67,6 +69,14 @@ export function Workbench() {
         }
       })
       .catch(() => setError("Could not load examples."));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      runControllerRef.current?.abort();
+      runControllerRef.current = null;
+      runTokenRef.current += 1;
+    };
   }, []);
 
   useEffect(() => {
@@ -127,6 +137,7 @@ export function Workbench() {
   }
 
   function startManualEntry() {
+    cancelActiveRun();
     setSelectedExampleId(null);
     setUrl("");
     setActionsJson("");
@@ -164,7 +175,19 @@ export function Workbench() {
     await executeTrace(validation.payload);
   }
 
+  function cancelActiveRun() {
+    runControllerRef.current?.abort();
+    runControllerRef.current = null;
+    runTokenRef.current += 1;
+    setIsRunning(false);
+  }
+
   async function executeTrace(payload: TraceRequestInput) {
+    runControllerRef.current?.abort();
+    const controller = new AbortController();
+    const runToken = runTokenRef.current + 1;
+    runControllerRef.current = controller;
+    runTokenRef.current = runToken;
     setIsRunning(true);
     setActiveStepIndex(null);
     setError(null);
@@ -175,6 +198,7 @@ export function Workbench() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -182,11 +206,25 @@ export function Workbench() {
       }
       if (!response.body) throw new Error("Trace stream was empty.");
 
-      await readTraceStream(response.body, handleTraceEvent);
+      await readTraceStream(response.body, (event) => {
+        if (runTokenRef.current !== runToken || controller.signal.aborted) {
+          return;
+        }
+        handleTraceEvent(event);
+      });
     } catch (caught) {
+      if (
+        runTokenRef.current !== runToken ||
+        (caught instanceof DOMException && caught.name === "AbortError")
+      ) {
+        return;
+      }
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setIsRunning(false);
+      if (runTokenRef.current === runToken) {
+        runControllerRef.current = null;
+        setIsRunning(false);
+      }
     }
   }
 

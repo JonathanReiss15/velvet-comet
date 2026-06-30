@@ -35,15 +35,22 @@ export async function POST(request: Request) {
       };
 
       try {
-        const report = await runTraceWithEvents(parsed.data, send);
+        const report = await runTraceWithEvents(parsed.data, send, {
+          signal: request.signal,
+        });
         saveTrace(report);
       } catch (error) {
+        if (isAbortError(error) || request.signal.aborted) return;
         send({
           type: "trace.error",
           error: error instanceof Error ? error.message : String(error),
         });
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // The client may have already disconnected after aborting the run.
+        }
       }
     },
   });
@@ -60,4 +67,8 @@ export async function POST(request: Request) {
 
 function serializeSseEvent(event: TraceStreamEvent) {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }
