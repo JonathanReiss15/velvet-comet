@@ -253,10 +253,7 @@ function scrapeResponseToStep(params: {
   const success = raw.success !== false;
   const markdown = typeof data.markdown === "string" ? data.markdown : "";
   const html = typeof data.html === "string" ? data.html : "";
-  const screenshot =
-    typeof data.screenshot === "string"
-      ? normalizeScreenshotBase64(data.screenshot)
-      : undefined;
+  const screenshot = extractScreenshotSource(data.screenshot);
   const error = extractRawError(raw);
   const selectorMatches = countSelectorMatches(html, params.selectorsToCheck);
 
@@ -337,10 +334,24 @@ function extractScrapeId(raw: unknown) {
   return typeof metadata.scrapeId === "string" ? metadata.scrapeId : undefined;
 }
 
-function normalizeScreenshotBase64(value: string) {
-  const marker = ";base64,";
-  const index = value.indexOf(marker);
-  return index >= 0 ? value.slice(index + marker.length) : value;
+function extractScreenshotSource(value: unknown) {
+  if (typeof value === "string") return normalizeScreenshotSource(value);
+  if (!value || typeof value !== "object") return undefined;
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["url", "src", "data", "base64", "image", "screenshot"]) {
+    if (typeof record[key] === "string") {
+      return normalizeScreenshotSource(record[key] as string);
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeScreenshotSource(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed;
 }
 
 function appendSkippedSteps(

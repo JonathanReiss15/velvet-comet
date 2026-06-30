@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { screenshotSrc } from "@/lib/screenshot-source";
 import { cn } from "@/lib/utils";
 import type { TraceReport, TraceStep } from "@/lib/trace-schema";
 
@@ -84,8 +85,4 @@ export function toneForDiagnosis(code: string) {
   return "muted";
 }
 
-export function screenshotSrc(base64: string) {
-  const trimmed = base64.trim();
-  const mime = trimmed.startsWith("PHN2Zy") ? "image/svg+xml" : "image/png";
-  return `data:${mime};base64,${trimmed}`;
-}
+export { screenshotSrc };
