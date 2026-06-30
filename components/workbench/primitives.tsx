@@ -49,6 +49,33 @@ export function BracketTag({
   );
 }
 
+export function PlainTag({
+  children,
+  tone = "muted",
+}: {
+  children: ReactNode;
+  tone?: "muted" | "orange" | "green" | "yellow" | "red";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center whitespace-nowrap rounded-[4px] border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+        tone === "orange" &&
+          "border-orange-500/25 bg-orange-500/10 text-[var(--accent)]",
+        tone === "green" &&
+          "border-green-500/25 bg-green-500/10 text-green-300",
+        tone === "yellow" &&
+          "border-yellow-500/25 bg-yellow-500/10 text-yellow-200",
+        tone === "red" && "border-red-500/25 bg-red-500/10 text-red-300",
+        tone === "muted" &&
+          "border-[var(--border)] bg-[#101010] text-[var(--muted-2)]",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function formatStatus(
   status: TraceReport["status"] | TraceStep["status"],
 ) {

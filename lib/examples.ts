@@ -1,4 +1,4 @@
-import type { DiagnosisCode, FirecrawlAction, FirecrawlOptions, TraceCheck } from "@/lib/trace-schema";
+import type { FirecrawlAction, FirecrawlOptions, TraceCheck } from "@/lib/trace-schema";
 
 type ExampleDefinition = {
   id: string;
@@ -7,7 +7,7 @@ type ExampleDefinition = {
   url: string;
   actions: FirecrawlAction[];
   checks: TraceCheck[];
-  expectedDiagnosis: DiagnosisCode;
+  expectedOutcome: string;
 };
 
 export const defaultFirecrawlOptions: FirecrawlOptions = {
@@ -31,7 +31,7 @@ export const examples: ExampleDefinition[] = [
       { type: "click", selector: "[data-testid='export-table']" }
     ],
     checks: [{ type: "selector_exists", selector: "[data-testid='export-table']" }],
-    expectedDiagnosis: "SELECTOR_NOT_FOUND"
+    expectedOutcome: "SELECTOR_NOT_FOUND"
   },
   {
     id: "navigation-changed-example",
@@ -44,7 +44,7 @@ export const examples: ExampleDefinition[] = [
       { type: "wait", milliseconds: 500 }
     ],
     checks: [{ type: "url_matches", pattern: "^https://example\\.com/?$" }],
-    expectedDiagnosis: "NAVIGATION_CHANGED"
+    expectedOutcome: "NAVIGATION_CHANGED"
   },
   {
     id: "wait-timeout-example",
@@ -53,6 +53,6 @@ export const examples: ExampleDefinition[] = [
     url: "https://example.com/",
     actions: [{ type: "wait", selector: "#dashboard-ready" }],
     checks: [{ type: "selector_exists", selector: "#dashboard-ready" }],
-    expectedDiagnosis: "WAIT_TIMEOUT"
+    expectedOutcome: "WAIT_TIMEOUT"
   }
 ];

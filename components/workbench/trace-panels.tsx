@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   CircleHelp,
   Clock,
-  Code2,
   Copy,
   Download,
   ExternalLink,
@@ -14,7 +13,6 @@ import {
   Image as ImageIcon,
   MousePointerClick,
   PanelRight,
-  Radio,
   ScrollText,
   TerminalSquare,
   XCircle,
@@ -26,6 +24,7 @@ import {
   CodeBlock,
   EmptyState,
   formatStatus,
+  PlainTag,
   screenshotSrc,
   toneForDiagnosis,
   toneForStatus,
@@ -43,6 +42,8 @@ export function OutcomePanel({
   selectedStep: TraceStep | null;
   isRunning: boolean;
 }) {
+  const displayedDurationMs = useDisplayedDuration(report, isRunning);
+
   if (!report) return null;
 
   const failedStep =
@@ -54,45 +55,61 @@ export function OutcomePanel({
     : selectedStep
       ? summarizeAction(selectedStep.action)
       : "No failed action";
+  const outcomeTitle = failedStep
+    ? `Step ${failedStep.index + 1} failed: ${actionText}`
+    : isRunning
+      ? "Trace running"
+      : "Trace completed";
+  const outcomeDescription =
+    report.diagnosis?.message ??
+    (isRunning
+      ? "Collecting action checkpoints and checks."
+      : "All planned actions and checks completed.");
+  const suggestedDiagnosis =
+    report.status === "failed" ? report.diagnosis : null;
   const metrics = [
     {
       label: "Status",
       value: isRunning ? "Running" : formatStatus(report.status),
-      icon: <Radio className="h-3.5 w-3.5" />,
+      valueClassName: statusValueClassName(report.status, isRunning),
+      icon: null,
     },
     {
       label: "Failed step",
       value:
         report.failedStepIndex == null ? "None" : `#${report.failedStepIndex + 1}`,
-      icon: <AlertTriangle className="h-3.5 w-3.5" />,
+      icon: failedStep ? <AlertTriangle className="h-3.5 w-3.5" /> : null,
     },
     {
       label: "Duration",
-      value: formatDuration(report.durationMs),
+      value: formatDuration(displayedDurationMs),
       icon: <Clock className="h-3.5 w-3.5" />,
     },
     {
-      label: "Calls",
-      value: String(report.summary.firecrawlCalls),
-      icon: <Radio className="h-3.5 w-3.5" />,
+      label: "Actions",
+      value: String(report.summary.stepsPlanned),
+      icon: null,
     },
   ];
 
   return (
     <section className="border-b border-[var(--border)] bg-[#0b0908]">
-      <div className="grid gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
+      <div
+        className={cn(
+          "grid gap-4 px-4 py-4 sm:px-6",
+          suggestedDiagnosis &&
+            "lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]",
+        )}
+      >
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-3">
-            <BracketTag tone={toneForStatus(report.status)}>
+            <PlainTag tone={toneForStatus(report.status)}>
               {formatStatus(report.status)}
-            </BracketTag>
-            <BracketTag tone="orange">
-              {report.mode === "recorded" ? "Recorded Trace" : "Live Firecrawl"}
-            </BracketTag>
+            </PlainTag>
             {report.diagnosis ? (
-              <BracketTag tone={toneForDiagnosis(report.diagnosis.code)}>
+              <PlainTag tone={toneForDiagnosis(report.diagnosis.code)}>
                 {report.diagnosis.code}
-              </BracketTag>
+              </PlainTag>
             ) : null}
             {report.liveViewUrl ? (
               <a
@@ -107,13 +124,10 @@ export function OutcomePanel({
             ) : null}
           </div>
           <h2 className="truncate text-lg font-semibold">
-            {failedStep
-              ? `Step ${failedStep.index + 1} failed: ${actionText}`
-              : "Trace completed"}
+            {outcomeTitle}
           </h2>
           <p className="mt-1 text-sm leading-6 text-[var(--muted-2)]">
-            {report.diagnosis?.message ??
-              "All planned actions and checks completed."}
+            {outcomeDescription}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
             {metrics.map((metric) => (
@@ -125,39 +139,99 @@ export function OutcomePanel({
                   <div className="text-[10px] font-medium uppercase text-[var(--muted)]">
                     {metric.label}
                   </div>
-                  <div className="mt-1 truncate text-sm font-semibold">
+                  <div
+                    className={cn(
+                      "mt-1 truncate text-sm font-semibold",
+                      metric.valueClassName,
+                    )}
+                  >
                     {metric.value}
                   </div>
                 </div>
-                <div className="text-[var(--accent)]">{metric.icon}</div>
+                {metric.icon ? (
+                  <div className="text-[var(--accent)]">{metric.icon}</div>
+                ) : null}
               </div>
             ))}
           </div>
         </div>
-        <div className="border border-[var(--border)] bg-[#101010] p-3">
-          <div className="text-[11px] font-medium text-[var(--muted)]">
-            Suggested Fix
+        {suggestedDiagnosis ? (
+          <div className="border border-[var(--border)] bg-[#101010] p-3">
+            <div className="text-[11px] font-medium text-[var(--muted)]">
+              Suggested Fix
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[var(--foreground)]">
+              {suggestedDiagnosis.suggestedFix}
+            </p>
+            <p className="mt-3 border-t border-[var(--border)] pt-3 text-xs leading-5 text-[var(--muted)]">
+              Prefix replay used {report.summary.firecrawlCalls} scrape calls;
+              production should emit runner-native step events.
+            </p>
           </div>
-          <p className="mt-2 text-sm leading-6 text-[var(--foreground)]">
-            {report.diagnosis?.suggestedFix ?? "No change needed."}
-          </p>
-          <p className="mt-3 border-t border-[var(--border)] pt-3 text-xs leading-5 text-[var(--muted)]">
-            {report.mode === "recorded"
-              ? "Recorded trace is bundled so the demo opens without credits."
-              : `Prefix replay used ${report.summary.firecrawlCalls} scrape calls; production should emit runner-native step events.`}
-          </p>
-        </div>
+        ) : null}
       </div>
     </section>
   );
 }
 
+function statusValueClassName(
+  status: TraceReport["status"],
+  isRunning: boolean,
+) {
+  if (isRunning) return "text-[var(--accent)]";
+  if (status === "passed") return "text-green-300";
+  if (status === "failed") return "text-red-300";
+  if (status === "partial") return "text-yellow-200";
+  return "text-[var(--muted-2)]";
+}
+
+function useDisplayedDuration(
+  report: TraceReport | null,
+  isRunning: boolean,
+) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const shouldAnimate =
+    Boolean(report) && isRunning && report?.completedAt == null;
+
+  useEffect(() => {
+    if (!report) {
+      setElapsedMs(0);
+      return;
+    }
+
+    if (!shouldAnimate) {
+      setElapsedMs(report.durationMs);
+      return;
+    }
+
+    const startedAt = Date.parse(report.createdAt);
+    const tick = () => {
+      setElapsedMs(
+        Number.isFinite(startedAt)
+          ? Math.max(0, Date.now() - startedAt)
+          : report.durationMs,
+      );
+    };
+
+    tick();
+    const interval = window.setInterval(tick, 100);
+    return () => window.clearInterval(interval);
+  }, [report, shouldAnimate]);
+
+  if (!report) return 0;
+  return shouldAnimate ? elapsedMs : report.durationMs;
+}
+
 export function TimelinePanel({
   report,
+  isRunning,
+  activeStepIndex,
   selectedStepIndex,
   onSelectStep,
 }: {
   report: TraceReport | null;
+  isRunning: boolean;
+  activeStepIndex: number | null;
   selectedStepIndex: number;
   onSelectStep: (index: number) => void;
 }) {
@@ -186,37 +260,14 @@ export function TimelinePanel({
         {report ? (
           <div className="divide-y divide-[var(--border)]">
             {report.steps.map((step) => (
-              <button
+              <TimelineStepRow
                 key={step.index}
-                className={cn(
-                  "grid w-full grid-cols-[34px_minmax(0,1fr)_84px] gap-3 px-4 py-3 text-left transition hover:bg-[#111]",
-                  selectedStepIndex === step.index && "bg-[#141414]",
-                )}
-                onClick={() => onSelectStep(step.index)}
-              >
-                <StepIcon status={step.status} />
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="text-xs text-[var(--muted)]">
-                      #{step.index + 1}
-                    </span>
-                    <span className="truncate text-sm font-medium">
-                      {summarizeAction(step.action)}
-                    </span>
-                  </div>
-                  <div className="mt-1 truncate text-xs text-[var(--muted)]">
-                    {step.url ?? step.error ?? "Pending"}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <BracketTag tone={toneForStepStatus(step.status)}>
-                    {formatStatus(step.status)}
-                  </BracketTag>
-                  <div className="mt-1 text-xs text-[var(--muted)]">
-                    {formatDuration(step.durationMs)}
-                  </div>
-                </div>
-              </button>
+                step={step}
+                isRunning={isRunning}
+                isActive={activeStepIndex === step.index}
+                isSelected={selectedStepIndex === step.index}
+                onSelect={() => onSelectStep(step.index)}
+              />
             ))}
           </div>
         ) : (
@@ -228,6 +279,87 @@ export function TimelinePanel({
       </div>
     </section>
   );
+}
+
+function TimelineStepRow({
+  step,
+  isRunning,
+  isActive,
+  isSelected,
+  onSelect,
+}: {
+  step: TraceStep;
+  isRunning: boolean;
+  isActive: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const displayedDurationMs = useDisplayedStepDuration(
+    step,
+    isRunning && isActive,
+  );
+
+  return (
+    <button
+      className={cn(
+        "grid w-full grid-cols-[34px_minmax(0,1fr)_84px] gap-3 px-4 py-3 text-left transition hover:bg-[#111]",
+        isSelected && "bg-[#141414]",
+      )}
+      onClick={onSelect}
+    >
+      <StepIcon status={step.status} />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-xs text-[var(--muted)]">
+            #{step.index + 1}
+          </span>
+          <span className="truncate text-sm font-medium">
+            {summarizeAction(step.action)}
+          </span>
+        </div>
+        <div className="mt-1 truncate text-xs text-[var(--muted)]">
+          {step.url ?? step.error ?? "Pending"}
+        </div>
+      </div>
+      <div className="text-right">
+        <BracketTag tone={toneForStepStatus(step.status)}>
+          {formatStatus(step.status)}
+        </BracketTag>
+        <div className="mt-1 text-xs text-[var(--muted)]">
+          {formatDuration(displayedDurationMs)}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function useDisplayedStepDuration(step: TraceStep, isActive: boolean) {
+  const [pendingStartedAt, setPendingStartedAt] = useState<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(step.durationMs);
+  const shouldAnimate = isActive && step.status === "pending";
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      setPendingStartedAt(null);
+      setElapsedMs(step.durationMs);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setPendingStartedAt(startedAt);
+    setElapsedMs(0);
+  }, [shouldAnimate, step.durationMs, step.index]);
+
+  useEffect(() => {
+    if (!shouldAnimate || pendingStartedAt == null) return;
+
+    const tick = () => setElapsedMs(Math.max(0, Date.now() - pendingStartedAt));
+    tick();
+    const interval = window.setInterval(tick, 100);
+    return () => window.clearInterval(interval);
+  }, [pendingStartedAt, shouldAnimate]);
+
+  return shouldAnimate ? elapsedMs : step.durationMs;
 }
 
 export function CheckpointInspector({
@@ -252,16 +384,16 @@ export function CheckpointInspector({
             </p>
           </div>
           {report ? (
-            <BracketTag tone="orange">
+            <PlainTag tone="orange">
               {report.mode === "recorded" ? "Recorded" : "Live"}
-            </BracketTag>
+            </PlainTag>
           ) : null}
         </div>
       </div>
       <div className="p-4">
         {step ? (
           <Tabs defaultValue="screenshot">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="screenshot">
                 <ImageIcon className="mr-1 h-3.5 w-3.5" />
                 Shot
@@ -277,10 +409,6 @@ export function CheckpointInspector({
               <TabsTrigger value="raw">
                 <TerminalSquare className="mr-1 h-3.5 w-3.5" />
                 Raw
-              </TabsTrigger>
-              <TabsTrigger value="code">
-                <Code2 className="mr-1 h-3.5 w-3.5" />
-                Code
               </TabsTrigger>
             </TabsList>
             <TabsContent value="screenshot">
@@ -303,14 +431,6 @@ export function CheckpointInspector({
             </TabsContent>
             <TabsContent value="raw">
               <CodeBlock value={JSON.stringify(step.raw ?? step, null, 2)} />
-            </TabsContent>
-            <TabsContent value="code">
-              <CodeBlock
-                value={
-                  step.generatedCode ??
-                  "No generated code captured for this step."
-                }
-              />
             </TabsContent>
           </Tabs>
         ) : (
@@ -390,11 +510,11 @@ function SelectorProbe({ step }: { step: TraceStep }) {
             </code>
             <div className="text-right">
               {count == null ? (
-                <BracketTag>Not probed</BracketTag>
+                <PlainTag>Not probed</PlainTag>
               ) : (
-                <BracketTag tone={count > 0 ? "green" : "red"}>
+                <PlainTag tone={count > 0 ? "green" : "red"}>
                   {count} match{count === 1 ? "" : "es"}
-                </BracketTag>
+                </PlainTag>
               )}
             </div>
           </div>
@@ -422,11 +542,11 @@ export function DiagnosisPanel({ report }: { report: TraceReport | null }) {
             </p>
           </div>
           {diagnosis ? (
-            <BracketTag tone={toneForDiagnosis(diagnosis.code)}>
+            <PlainTag tone={toneForDiagnosis(diagnosis.code)}>
               {diagnosis.code}
-            </BracketTag>
+            </PlainTag>
           ) : (
-            <BracketTag>Clear</BracketTag>
+            <PlainTag>Clear</PlainTag>
           )}
         </div>
       </div>
@@ -558,7 +678,7 @@ export function ExportPanel({
           onClick={onCopy}
         >
           <Copy className="h-4 w-4" />
-          {copyState === "copied" ? "Copied" : "Copy"}
+          {copyState === "copied" ? "Copied for LLM" : "Copy for LLM"}
         </Button>
       </div>
     </section>

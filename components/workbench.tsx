@@ -10,7 +10,6 @@ import {
   Home,
   KeyRound,
   Monitor,
-  Play,
   Settings2,
   TerminalSquare,
 } from "lucide-react";
@@ -20,12 +19,8 @@ import {
   RailButton,
   TopUtility,
 } from "@/components/workbench/chrome";
-import {
-  defaultActions,
-  defaultChecks,
-  defaultFirecrawl,
-} from "@/components/workbench/defaults";
-import { BracketTag, toneForStatus } from "@/components/workbench/primitives";
+import { defaultFirecrawl } from "@/components/workbench/defaults";
+import { PlainTag, toneForStatus } from "@/components/workbench/primitives";
 import {
   CheckpointInspector,
   DiagnosisPanel,
@@ -34,33 +29,24 @@ import {
   TimelinePanel,
 } from "@/components/workbench/trace-panels";
 import { TraceSetup } from "@/components/workbench/trace-setup";
+import { validateTraceSetup } from "@/components/workbench/trace-validation";
 import type { Example, ExamplesResponse } from "@/components/workbench/types";
-import { recordedTrace as bundledRecordedTrace } from "@/lib/recorded-trace";
 import { redactTraceReport } from "@/lib/report-export";
 import type { TraceStreamEvent } from "@/lib/trace-events";
-import type { TraceReport } from "@/lib/trace-schema";
+import type { TraceReport, TraceRequestInput } from "@/lib/trace-schema";
 import { cn } from "@/lib/utils";
 
 export function Workbench() {
   const [examples, setExamples] = useState<Example[]>([]);
-  const [recordedTrace, setRecordedTrace] = useState<TraceReport | null>(
-    bundledRecordedTrace,
-  );
-  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(
-    "selector-missing-books",
-  );
-  const [url, setUrl] = useState("https://books.toscrape.com/");
-  const [actionsJson, setActionsJson] = useState(defaultActions);
-  const [checksJson, setChecksJson] = useState(defaultChecks);
+  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+  const [actionsJson, setActionsJson] = useState("");
+  const [checksJson, setChecksJson] = useState("");
   const [firecrawl, setFirecrawl] = useState(defaultFirecrawl);
-  const [report, setReport] = useState<TraceReport | null>(
-    bundledRecordedTrace,
-  );
-  const [selectedStepIndex, setSelectedStepIndex] = useState(
-    bundledRecordedTrace.failedStepIndex ?? 0,
-  );
+  const [report, setReport] = useState<TraceReport | null>(null);
+  const [selectedStepIndex, setSelectedStepIndex] = useState(0);
+  const [activeStepIndex, setActiveStepIndex] = useState<number | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [isReplayingDemo, setIsReplayingDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [redactedExport, setRedactedExport] = useState(true);
@@ -70,9 +56,6 @@ export function Workbench() {
       .then((response) => response.json())
       .then((data: ExamplesResponse) => {
         setExamples(data.examples);
-        setRecordedTrace(data.recordedTrace);
-        setReport(data.recordedTrace);
-        if (data.examples[0]) loadExample(data.examples[0], false);
       })
       .catch(() => setError("Could not load examples."));
   }, []);
@@ -91,50 +74,94 @@ export function Workbench() {
     );
   }, [report, selectedStepIndex]);
 
-  function loadExample(example: Example, clearReport = true) {
+  const setupValidation = useMemo(
+    () =>
+      validateTraceSetup({
+        selectedExampleId,
+        url,
+        actionsJson,
+        checksJson,
+        firecrawl,
+      }),
+    [actionsJson, checksJson, firecrawl, selectedExampleId, url],
+  );
+
+  async function runExample(example: Example) {
+    const actions = JSON.stringify(example.actions, null, 2);
+    const checks = JSON.stringify(example.checks, null, 2);
+
     setSelectedExampleId(example.id);
     setUrl(example.url);
-    setActionsJson(JSON.stringify(example.actions, null, 2));
-    setChecksJson(JSON.stringify(example.checks, null, 2));
-    setError(null);
-    if (clearReport) setReport(null);
-  }
-
-  function loadRecordedTrace() {
-    const trace = recordedTrace ?? bundledRecordedTrace;
-    if (!trace) return;
-
-    const matchingExample =
-      examples.find((example) => example.id === "selector-missing-books") ??
-      examples[0];
-    if (matchingExample) {
-      loadExample(matchingExample, false);
-    } else {
-      setUrl(trace.url);
-      setActionsJson(JSON.stringify(trace.actions, null, 2));
-      setChecksJson(JSON.stringify(trace.checks, null, 2));
-      setFirecrawl(defaultFirecrawl);
-    }
-
-    setReport({ ...trace, steps: [...trace.steps] });
+    setActionsJson(actions);
+    setChecksJson(checks);
+    setFirecrawl(defaultFirecrawl);
+    setReport(null);
     setSelectedStepIndex(0);
+    setActiveStepIndex(null);
     setError(null);
     setCopyState("idle");
-    setIsReplayingDemo(true);
 
-    window.setTimeout(() => {
-      setSelectedStepIndex(trace.failedStepIndex ?? 0);
-      setIsReplayingDemo(false);
-    }, 650);
+    const validation = validateTraceSetup({
+      selectedExampleId: example.id,
+      url: example.url,
+      actionsJson: actions,
+      checksJson: checks,
+      firecrawl: defaultFirecrawl,
+    });
+
+    if (!validation.payload) {
+      setError(validation.issues[0] ?? "Example failed validation.");
+      return;
+    }
+
+    await executeTrace(validation.payload);
+  }
+
+  function startManualEntry() {
+    setSelectedExampleId(null);
+    setUrl("");
+    setActionsJson("");
+    setChecksJson("");
+    setFirecrawl(defaultFirecrawl);
+    setReport(null);
+    setSelectedStepIndex(0);
+    setActiveStepIndex(null);
+    setError(null);
+    setCopyState("idle");
+  }
+
+  function markCustomChange() {
+    setSelectedExampleId(null);
+    if (!report) {
+      setSelectedStepIndex(0);
+    }
+    setCopyState("idle");
   }
 
   async function runTrace() {
+    const validation = validateTraceSetup({
+      selectedExampleId,
+      url,
+      actionsJson,
+      checksJson,
+      firecrawl,
+    });
+
+    if (!validation.payload) {
+      setError(validation.issues[0] ?? "Complete trace setup before running.");
+      return;
+    }
+
+    await executeTrace(validation.payload);
+  }
+
+  async function executeTrace(payload: TraceRequestInput) {
     setIsRunning(true);
+    setActiveStepIndex(null);
     setError(null);
     setCopyState("idle");
 
     try {
-      const payload = buildTracePayload();
       const response = await fetch("/api/traces/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,18 +185,23 @@ export function Workbench() {
     if (event.type === "trace.started") {
       setReport(event.report);
       setSelectedStepIndex(0);
+      setActiveStepIndex(null);
       return;
     }
 
     if (event.type === "step.started") {
       setReport((current) => updateStepInReport(current, event.step));
       setSelectedStepIndex(event.step.index);
+      setActiveStepIndex(event.step.index);
       return;
     }
 
     if (event.type === "step.completed") {
       setReport((current) =>
         updateStepInReport(current, event.step, { summary: event.summary }),
+      );
+      setActiveStepIndex((current) =>
+        current === event.step.index ? null : current,
       );
       return;
     }
@@ -184,6 +216,7 @@ export function Workbench() {
         }),
       );
       setSelectedStepIndex(event.failedStepIndex);
+      setActiveStepIndex(null);
       return;
     }
 
@@ -195,9 +228,11 @@ export function Workbench() {
     if (event.type === "trace.completed") {
       setReport(event.report);
       setSelectedStepIndex(event.report.failedStepIndex ?? 0);
+      setActiveStepIndex(null);
       return;
     }
 
+    setActiveStepIndex(null);
     setError(event.error);
   }
 
@@ -209,29 +244,6 @@ export function Workbench() {
     window.setTimeout(() => setCopyState("idle"), 1400);
   }
 
-  function buildTracePayload() {
-    return {
-      mode: "live",
-      exampleId: selectedExampleId ?? undefined,
-      url,
-      actions: JSON.parse(actionsJson),
-      checks: JSON.parse(checksJson || "[]"),
-      firecrawl: {
-        waitFor: Number(firecrawl.waitFor),
-        timeout: Number(firecrawl.timeout),
-        mobile: Boolean(firecrawl.mobile),
-        proxy: firecrawl.proxy,
-        onlyMainContent: Boolean(firecrawl.onlyMainContent),
-        ...(firecrawl.location.country
-          ? { location: { country: firecrawl.location.country.toUpperCase() } }
-          : {}),
-        ...(firecrawl.profile.name
-          ? { profile: { name: firecrawl.profile.name } }
-          : {}),
-      },
-    };
-  }
-
   return (
     <main className="min-h-screen bg-[var(--background)]">
       <div className="grid min-h-screen grid-cols-[48px_minmax(0,1fr)]">
@@ -241,12 +253,7 @@ export function Workbench() {
           <TopBar />
 
           <div className="mx-auto min-h-[calc(100vh-52px)] max-w-[1220px] border-x border-[var(--border)] bg-[#070707]/92">
-            <Hero
-              report={report}
-              recordedTrace={recordedTrace}
-              isReplayingDemo={isReplayingDemo}
-              onReplay={loadRecordedTrace}
-            />
+            <Hero report={report} />
 
             <OutcomePanel
               report={report}
@@ -254,10 +261,17 @@ export function Workbench() {
               isRunning={isRunning}
             />
 
-            <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(320px,0.95fr)_minmax(360px,1.2fr)]">
+            <div
+              className={cn(
+                "grid grid-cols-1",
+                report &&
+                  "xl:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(320px,0.95fr)_minmax(360px,1.2fr)]",
+              )}
+            >
               <div
                 className={cn(
-                  "border-b border-[var(--border)] xl:border-r",
+                  "border-b border-[var(--border)]",
+                  report && "xl:border-r",
                   report ? "order-3 xl:order-1" : "order-1",
                 )}
               >
@@ -269,54 +283,57 @@ export function Workbench() {
                   checksJson={checksJson}
                   firecrawl={firecrawl}
                   isRunning={isRunning}
+                  hasReport={Boolean(report)}
                   error={error}
-                  onLoadExample={loadExample}
+                  validation={setupValidation}
+                  onLoadExample={runExample}
+                  onStartCustom={startManualEntry}
+                  onClear={startManualEntry}
                   onUrlChange={(value) => {
-                    setSelectedExampleId(null);
+                    markCustomChange();
                     setUrl(value);
                   }}
                   onActionsChange={(value) => {
-                    setSelectedExampleId(null);
+                    markCustomChange();
                     setActionsJson(value);
                   }}
                   onChecksChange={(value) => {
-                    setSelectedExampleId(null);
+                    markCustomChange();
                     setChecksJson(value);
                   }}
-                  onFirecrawlChange={setFirecrawl}
+                  onFirecrawlChange={(value) => {
+                    markCustomChange();
+                    setFirecrawl(value);
+                  }}
                   onRun={runTrace}
                 />
               </div>
 
-              <div
-                className={cn(
-                  "border-b border-[var(--border)] 2xl:border-r",
-                  report ? "order-1 xl:order-2" : "order-2",
-                )}
-              >
-                <TimelinePanel
-                  report={report}
-                  selectedStepIndex={selectedStepIndex}
-                  onSelectStep={setSelectedStepIndex}
-                />
-              </div>
+              {report ? (
+                <>
+                  <div className="order-1 border-b border-[var(--border)] xl:order-2 2xl:border-r">
+                    <TimelinePanel
+                      report={report}
+                      isRunning={isRunning}
+                      activeStepIndex={activeStepIndex}
+                      selectedStepIndex={selectedStepIndex}
+                      onSelectStep={setSelectedStepIndex}
+                    />
+                  </div>
 
-              <div
-                className={cn(
-                  "grid grid-cols-1 xl:col-span-2 2xl:col-span-1",
-                  report ? "order-2 xl:order-3" : "order-3",
-                )}
-              >
-                <CheckpointInspector step={selectedStep} report={report} />
-                <DiagnosisPanel report={report} />
-                <ExportPanel
-                  report={report}
-                  copyState={copyState}
-                  redacted={redactedExport}
-                  onRedactedChange={setRedactedExport}
-                  onCopy={copyReport}
-                />
-              </div>
+                  <div className="order-2 grid grid-cols-1 xl:order-3 xl:col-span-2 2xl:col-span-1">
+                    <CheckpointInspector step={selectedStep} report={report} />
+                    <DiagnosisPanel report={report} />
+                    <ExportPanel
+                      report={report}
+                      copyState={copyState}
+                      redacted={redactedExport}
+                      onRedactedChange={setRedactedExport}
+                      onCopy={copyReport}
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
         </section>
@@ -476,17 +493,7 @@ function TopBar() {
   );
 }
 
-function Hero({
-  report,
-  recordedTrace,
-  isReplayingDemo,
-  onReplay,
-}: {
-  report: TraceReport | null;
-  recordedTrace: TraceReport | null;
-  isReplayingDemo: boolean;
-  onReplay: () => void;
-}) {
+function Hero({ report }: { report: TraceReport | null }) {
   return (
     <section className="border-b border-[var(--border)] px-4 py-7 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -498,26 +505,13 @@ function Hero({
             Diagnose Firecrawl action failures with live step evidence.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onReplay}
-            disabled={!recordedTrace}
-            className="rounded-[5px]"
-          >
-            <Play className="h-3.5 w-3.5" />
-            {isReplayingDemo ? "Replaying" : "Replay demo"}
-          </Button>
-          <BracketTag tone="orange">
-            {report?.mode === "recorded" ? "Recorded" : "Live"}
-          </BracketTag>
-          {report ? (
-            <BracketTag tone={toneForStatus(report.status)}>
+        {report ? (
+          <div className="flex items-center gap-3">
+            <PlainTag tone={toneForStatus(report.status)}>
               {report.status}
-            </BracketTag>
-          ) : null}
-        </div>
+            </PlainTag>
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -7,7 +7,7 @@ export type Example = {
   url: string;
   actions: Array<Record<string, unknown>>;
   checks: Array<Record<string, unknown>>;
-  expectedDiagnosis: string;
+  expectedOutcome: string;
 };
 
 export type ExamplesResponse = {
