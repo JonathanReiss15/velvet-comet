@@ -1,72 +1,29 @@
 # Action Trace Workbench
 
-## How I would present this in the 45-minute session
+I chose feedback item **#7**, the workflow automation customer whose Firecrawl `actions` arrays have grown to fourteen steps. The core problem is not that Firecrawl cannot automate browsers. It is that when a long action chain fails, the customer gets one opaque `SCRAPE_FAILED` and has to rerun the workflow with screenshots inserted by hand just to learn whether step 3, 7, or 11 broke.
 
-I chose feedback item **#7**, the workflow automation customer with fourteen-step Firecrawl `actions` arrays. The concrete pain is not that Firecrawl cannot run browser actions; it is that a long action chain can collapse into one opaque `SCRAPE_FAILED`. The customer then reruns the whole chain with screenshots inserted by hand just to learn whether step 3, 7, or 11 broke.
-
-That problem is also broader than one account. In the support data, **error confusion / debugging help** is the largest category: 214 of 535 tickets in the last 90 days, about 40%. The referenced customer is a Growth account at $28k ARR with heavy actions usage, and the same observability gap also affects protected-site failures, slow scrapes, and authenticated portal workflows. My product bet is: before building a self-healing automation platform, Firecrawl should make failed browser workflows explain themselves.
+This is larger than one account. In the provided support data, **error confusion / debugging help** is the largest category: 214 of 535 tickets in the last 90 days, roughly 40%. The quoted customer is a $28k ARR Growth account with heavy actions usage, but the same observability gap shows up in protected-site failures, slow scrapes, and authenticated portal workflows. My bet is that before Firecrawl tries to automatically repair complex automations, it should make failed browser workflows explain themselves.
 
 ## What I built
 
-I built **Action Trace Workbench**, a live Next.js dashboard for debugging Firecrawl action workflows. The user loads one of three examples or pastes a URL plus `actions` JSON, clicks **Run**, and gets a step-by-step trace:
+I built **Action Trace Workbench**, a Next.js dashboard for debugging Firecrawl action workflows. It opens directly into a completed recorded trace, so the failure state is visible without a Firecrawl API key or credits. From there, a user can replay the bundled demo, load a live example, or paste a URL plus `actions` JSON and run it against Firecrawl.
+
+For each run, the workbench produces a step-by-step trace:
 
 - failed step index
-- action timeline with duration and status
-- screenshot, markdown/text, and selector checkpoint evidence
-- raw Firecrawl response
-- deterministic diagnosis code
-- suggested fix
-- JSON, Markdown, and redacted support-summary export
+- timeline with action, status, duration, URL, and error state
+- checkpoint screenshot, text excerpt, raw response, generated request, and selector probe
+- deterministic diagnosis code such as `SELECTOR_NOT_FOUND`, `WAIT_TIMEOUT`, or `NAVIGATION_CHANGED`
+- suggested fix and related Firecrawl options
+- JSON, Markdown, and redacted support-summary exports
 
-The app opens with a bundled recorded trace so the reviewer immediately sees the finished failure state without spending credits. Live runs use the `FIRECRAWL_API_KEY` from `.env` and call Firecrawl on demand. Under the hood live mode uses **prefix replay** with `POST /v2/scrape`: for step N, it runs actions `[0..N]` and requests markdown, HTML, and screenshot. The returned HTML is parsed for selector checks, so `selector_exists` evidence is based on actual DOM match counts. Prefix replay is more expensive than native runner instrumentation, but it is honest, buildable externally, and proves the product shape without changing Firecrawl internals.
+The first demo path targets the exact customer pain: a Books to Scrape workflow succeeds through setup steps, then fails when it clicks `[data-testid='export-table']`. Instead of returning one generic scrape failure, the workbench identifies step 4, shows the page state, reports that the selector matched zero elements, and suggests updating the selector or waiting for the UI state that creates it.
 
-In the demo I would start on the recorded failure trace, then run the three built-in live examples if time and credits allow:
+## How it works
 
-1. **Missing selector after product navigation**: Books to Scrape passes setup steps, then fails on `[data-testid='export-table']`; the workbench identifies step 4 and classifies `SELECTOR_NOT_FOUND`.
-2. **Unexpected navigation**: example.com click succeeds but leaves the expected URL; the workbench classifies `NAVIGATION_CHANGED`.
-3. **Wait timeout**: example.com never exposes `#dashboard-ready`; the workbench classifies `WAIT_TIMEOUT`.
+The live prototype uses Firecrawl's existing `POST /v2/scrape` endpoint with **prefix replay**. For step N, the runner sends actions `[0..N]` and requests markdown, HTML, and screenshot. The returned HTML is parsed with Cheerio so selector checks are backed by actual DOM match counts when Firecrawl returns HTML.
 
-The UI is Firecrawl-style on purpose: dark operator shell, compact metrics, orange primary action, timeline rows, screenshot/text/raw/code inspector, and export controls. The first thing I want the reviewer to see after a run is the answer: which step failed, what Firecrawl saw, and what I would try next.
-
-## How to run the demo quickly
-
-```bash
-npm install
-npm run dev
-```
-
-Then open `http://localhost:3000`. The app starts on a bundled recorded trace, so the reviewer can inspect the complete failure report without a Firecrawl API key or credits. The **Replay demo** button reloads that recorded trace and walks the selection back to the failed step.
-
-Live runs are optional. Add `FIRECRAWL_API_KEY=...` to `.env`, choose a scenario, and click **Run**. The same workflow executes through Firecrawl prefix replay. The run streams back as `text/event-stream`, so the timeline hydrates step-by-step instead of waiting for the final report. I also added `npm test`, `npm run typecheck`, and `npm run build` as the verification path.
-
-## What I deliberately did not build
-
-I did **not** build a generic Playwright IDE. The product surface is Firecrawl action observability, not arbitrary browser automation authoring.
-
-I did **not** build automatic workflow repair. The app suggests fixes, but it does not rewrite customer actions and pretend to know the right answer. That should come after trace quality is trusted.
-
-I did **not** build credential vaulting or authenticated-session management for item #11. That is a separate security/product surface. This workbench would help show where login failed, but it should not own customer credentials.
-
-I did **not** build BYO residential proxies, LinkedIn scraping, managed extractors, or coverage-first search. Those are real opportunities, but they are either much larger platform bets or more directly competitive with surfaces Firecrawl already has. For this take-home, narrow and deep felt stronger than touching five customer asks shallowly.
-
-I also did **not** claim Firecrawl has no debugging. While reviewing the dashboard, I found adjacent surfaces: Interact Playground, Scrape Playground, Activity Logs, result inspection, and a run-level debug modal. The gap I am targeting is narrower: **action-step traceability** for long `actions` workflows.
-
-## Implementation walkthrough
-
-For the code walkthrough, I would start at `app/api/traces/route.ts`, then follow:
-
-- `lib/trace-schema.ts` for request/report validation
-- `lib/examples.ts` for the live demo payloads
-- `lib/trace-runner.ts` for prefix replay and checkpoint assembly
-- `lib/firecrawl-trace-client.ts` for Firecrawl API calls
-- `lib/trace-analyzer.ts` for deterministic diagnosis rules
-- `components/workbench.tsx` for the UI flow
-
-The progressive path is `app/api/traces/stream/route.ts`. It accepts the same POST body as the JSON route and emits events such as `trace.started`, `step.started`, `step.completed`, `step.failed`, and `trace.completed`. I used fetch streaming rather than browser `EventSource` because `EventSource` cannot send the JSON POST body this workflow needs.
-
-The current demo stores traces in memory. That is enough for local export and reload during the session; production should use durable trace storage with retention and redaction controls because screenshots and markdown can contain sensitive page data.
-
-The production API contract I would want Firecrawl's browser runner to emit is roughly:
+This is intentionally not the production architecture I would want inside Firecrawl. Prefix replay costs more credits, can drift from a single continuous browser session, and is less faithful for stateful workflows. I used it because it is honest and buildable from the public API. The production version should instrument the browser runner directly and emit native step events from one execution:
 
 ```ts
 {
@@ -83,14 +40,28 @@ The production API contract I would want Firecrawl's browser runner to emit is r
 }
 ```
 
-That native event stream would remove replay drift, reduce cost, and make trace fidelity stronger than the external prototype.
+That native trace would remove replay drift, reduce cost, and make the artifact reliable enough for support tickets, customer escalations, and team-shared run history.
+
+The main implementation path is `app/api/traces/stream/route.ts` -> `lib/trace-runner.ts` -> `lib/firecrawl-trace-client.ts` -> `lib/trace-analyzer.ts`. The stream route emits progressive trace and step events so the UI hydrates as each checkpoint finishes. I used fetch streaming instead of browser `EventSource` because this workflow needs a JSON POST body.
+
+## What I deliberately did not build
+
+I did **not** build a generic Playwright IDE; the product surface is Firecrawl action observability, not arbitrary browser automation authoring.
+
+I did **not** build automatic workflow repair. The app suggests fixes, but it does not rewrite customer actions and pretend to know the right selector.
+
+I did **not** build credential vaulting or authenticated-session management for item #11. This workbench would help show where a login failed, but credential handling is a separate security surface.
+
+I did **not** build BYO residential proxies, LinkedIn scraping, managed extractors, or coverage-first search. Those are valid opportunities, but they are broader platform bets. This work is intentionally narrow: one repeated failure mode, solved deeply enough to demo.
+
+I also did **not** assume Firecrawl has no debugging. The current product has adjacent surfaces: Interact Playground, Scrape Playground, Activity Logs, result inspection, and a run-level debug modal. The gap here is narrower: automatic **action-step traceability** for long `actions` workflows.
 
 ## One thing AI got wrong
 
-The AI-assisted plan initially overfit to a safe offline replay path, and it also assumed Firecrawl Interact code execution would accept generated top-level `await` code exactly as the docs examples implied. I caught both by testing against the actual local UI and the live Firecrawl API.
+The AI-assisted plan initially treated Firecrawl Interact-style JavaScript execution as the fastest route to a trace runner. That looked plausible from docs-style examples, but live testing exposed a bad assumption: generated top-level `await` snippets and Playwright-like code did not behave like a normal async script contract, and the failure looked more like a REPL execution mismatch than a customer action failure.
 
-The fix was to make the product live-only, then switch the runner to `/v2/scrape` prefix replay. That made the demo less synthetic and easier to defend in the interview: every trace shown in the UI is backed by real Firecrawl responses, including the messy failure behavior.
+I caught it by testing against the local UI and live Firecrawl responses instead of trusting the generated plan. The fix was to stop translating actions into generated JavaScript and switch to `/v2/scrape` prefix replay using Firecrawl's native `actions` array. That made the demo easier to defend: live traces are backed by the same action primitives customers already use, while the UI labels the prefix-replay cost and fidelity tradeoff explicitly.
 
 ## Closing pitch
 
-Action Trace Workbench turns a long Firecrawl action failure from "the scrape failed" into "step 4 clicked a selector that never existed on this page, here is the screenshot, markdown, raw error, and next fix." That directly addresses the customer quote, reduces support ambiguity, and gives Firecrawl a credible observability layer for complex browser-action workflows.
+Action Trace Workbench turns "the scrape failed" into "step 4 clicked a selector that never existed on this page; here is the screenshot, selector evidence, raw response, and next fix." That directly addresses the customer quote, reduces support ambiguity, and gives Firecrawl a credible observability layer for complex browser-action workflows.
