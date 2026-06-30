@@ -1,7 +1,12 @@
 import { defaultFirecrawlOptions, examples } from "@/lib/examples";
 import type { TraceReport } from "@/lib/trace-schema";
 
-const example = examples[0];
+const example = examples.find(
+  (candidate) => candidate.id === "selector-missing-books",
+);
+if (!example) {
+  throw new Error("Recorded trace example selector-missing-books is missing.");
+}
 const createdAt = "2026-06-30T04:18:21.000Z";
 const completedAt = "2026-06-30T04:18:34.742Z";
 

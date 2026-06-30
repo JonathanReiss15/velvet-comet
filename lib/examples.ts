@@ -20,6 +20,25 @@ export const defaultFirecrawlOptions: FirecrawlOptions = {
 
 export const examples: ExampleDefinition[] = [
   {
+    id: "successful-example-domain",
+    label: "Successful text check on Example Domain",
+    description: "Runs against example.com, waits for visible DOM content, and verifies the page heading.",
+    url: "https://example.com/",
+    actions: [
+      { type: "wait", selector: "h1" },
+      { type: "wait", selector: "p" },
+      { type: "wait", milliseconds: 500 }
+    ],
+    checks: [
+      {
+        type: "selector_text_contains",
+        selector: "h1",
+        text: "Example Domain"
+      }
+    ],
+    expectedOutcome: "PASSED"
+  },
+  {
     id: "selector-missing-books",
     label: "Missing selector after product navigation",
     description: "Runs against Books to Scrape and fails when a non-existent export control is clicked.",

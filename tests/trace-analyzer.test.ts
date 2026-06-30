@@ -54,6 +54,40 @@ describe("trace analyzer", () => {
     }
   });
 
+  it("validates text against selected DOM nodes", () => {
+    const action: FirecrawlAction = {
+      type: "wait",
+      milliseconds: 500,
+    };
+    const step: TraceStep = {
+      index: 0,
+      action,
+      status: "passed",
+      durationMs: 100,
+      selectorMatches: {
+        h1: 1,
+      },
+      selectorText: {
+        h1: "Example Domain",
+      },
+    };
+
+    const result = evaluateChecks({
+      checks: [
+        {
+          type: "selector_text_contains",
+          selector: "h1",
+          text: "Example Domain",
+        },
+      ],
+      action,
+      step,
+      isFinalStep: true,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("includes concrete selector guidance in the diagnosis", () => {
     const action: FirecrawlAction = {
       type: "wait",

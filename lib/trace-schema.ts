@@ -86,6 +86,11 @@ const CheckSchema = z.discriminatedUnion("type", [
     selector
   }),
   z.object({
+    type: z.literal("selector_text_contains"),
+    selector,
+    text: z.string().min(1).max(1000)
+  }),
+  z.object({
     type: z.literal("url_matches"),
     pattern: z.string().min(1).max(1000)
   }),
@@ -143,6 +148,7 @@ const TraceStepSchema = z.object({
   title: z.string().optional(),
   textExcerpt: z.string().optional(),
   selectorMatches: z.record(z.number().int().min(0)).optional(),
+  selectorText: z.record(z.string()).optional(),
   screenshotBase64: z.string().optional(),
   generatedCode: z.string().optional(),
   error: z.string().optional(),

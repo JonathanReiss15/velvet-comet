@@ -387,6 +387,7 @@ function scrapeResponseToStep(params: {
   const screenshot = extractScreenshotSource(data.screenshot);
   const error = extractRawError(raw);
   const selectorMatches = countSelectorMatches(html, params.selectorsToCheck);
+  const selectorText = extractSelectorText(html, params.selectorsToCheck);
 
   return {
     index: params.index,
@@ -398,6 +399,7 @@ function scrapeResponseToStep(params: {
       typeof metadata.title === "string" ? metadata.title.trim() : undefined,
     textExcerpt: markdown.slice(0, 1200),
     selectorMatches,
+    selectorText,
     screenshotBase64: screenshot,
     generatedCode: params.generatedCode,
     error: success ? undefined : (error ?? "Firecrawl scrape prefix failed."),
@@ -423,8 +425,15 @@ function compactRawResponse(raw: Record<string, unknown>) {
 }
 
 function selectorsForChecks(checks: TraceRequestInput["checks"]) {
-  return checks.flatMap((check) =>
-    check.type === "selector_exists" ? [check.selector] : [],
+  return Array.from(
+    new Set(
+      checks.flatMap((check) =>
+        check.type === "selector_exists" ||
+        check.type === "selector_text_contains"
+          ? [check.selector]
+          : [],
+      ),
+    ),
   );
 }
 
@@ -449,6 +458,24 @@ function countSelectorMatches(html: string, selectors: string[]) {
     }
   }
   return matches;
+}
+
+function extractSelectorText(html: string, selectors: string[]) {
+  if (!html || selectors.length === 0) return undefined;
+  const $ = cheerio.load(html);
+  const textBySelector: Record<string, string> = {};
+  for (const selector of selectors) {
+    try {
+      textBySelector[selector] = $(selector)
+        .text()
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 1200);
+    } catch {
+      textBySelector[selector] = "";
+    }
+  }
+  return textBySelector;
 }
 
 function extractScrapeId(raw: unknown) {

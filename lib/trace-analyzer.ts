@@ -196,6 +196,42 @@ export function evaluateChecks(params: {
         }
       };
     }
+    if (check.type === "selector_text_contains") {
+      const matchCount = params.step.selectorMatches?.[check.selector];
+      const selectedText = params.step.selectorText?.[check.selector] ?? "";
+      if (!matchCount || matchCount <= 0) {
+        return {
+          ok: false,
+          failure: {
+            code: "SELECTOR_NOT_FOUND" as DiagnosisCode,
+            message: `The live checkpoint could not verify selector ${check.selector}.`,
+            evidence: [
+              `Expected selector: ${check.selector}`,
+              matchCount == null
+                ? "Firecrawl did not return HTML for this checkpoint, so the selector could not be evaluated."
+                : `Parsed HTML match count: ${matchCount}`
+            ]
+          }
+        };
+      }
+
+      if (!selectedText.includes(check.text)) {
+        return {
+          ok: false,
+          failure: {
+            code: hasBlockSignal(selectedText || text)
+              ? ("POSSIBLE_BLOCK" as DiagnosisCode)
+              : ("EMPTY_EXTRACTION" as DiagnosisCode),
+            message: `The DOM text for ${check.selector} did not include "${check.text}".`,
+            evidence: [
+              `Expected selector: ${check.selector}`,
+              `Expected text: ${check.text}`,
+              `Selected DOM text length: ${selectedText.length}`
+            ]
+          }
+        };
+      }
+    }
     if (check.type === "text_contains" && !text.includes(check.text)) {
       return {
         ok: false,
