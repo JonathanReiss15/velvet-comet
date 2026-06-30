@@ -309,9 +309,9 @@ Useful Firecrawl patterns:
 
 For our app:
 
-- use badges for `FAILED`, `PASSED`, `PARTIAL`, `LIVE`, `FIXTURE`
+- use badges for `FAILED`, `PASSED`, `PARTIAL`, `LIVE`
 - use orange primary CTA: `Run trace`
-- use muted secondary buttons: `Load fixture`, `Copy report`, `Export JSON`
+- use muted secondary buttons: `Load example`, `Copy report`, `Export JSON`
 - use icon buttons for open/copy/download/settings
 - use tabs/segmented control for `Timeline`, `Screenshot`, `Markdown`, `Raw`
 
@@ -371,12 +371,10 @@ For our app:
    - evidence
    - suggested fix
    - raw error link/collapsible section
-7. Include a `Fixture mode` badge when rendering seeded demo data.
-8. Include a `Run-level debug exists; step trace is new` positioning line in the writeup, not in the app UI.
+7. Include a `Run-level debug exists; step trace is new` positioning line in the writeup, not in the app UI.
 
 ## Competitive/Product Positioning Note
 
 The discovered `Debug issue` modal means our product should avoid saying "Firecrawl has no debugging." The sharper position is:
 
 > Firecrawl already has request logs, result inspection, and run-level debug assistance. The missing layer is action-step observability: a deterministic trace that shows which browser action failed, what the page looked like at that moment, and what to change next.
-

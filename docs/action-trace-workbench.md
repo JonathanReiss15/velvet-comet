@@ -13,7 +13,7 @@ This is the best differentiated bet if we do not want to compete directly with a
 - It targets a concrete developer pain with a crisp before/after demo.
 - It maps to the largest support category: `error confusion / debugging help` is 214 of 535 support tickets in the last 90 days, roughly 40%.
 - It starts from a paying growth customer at $28k ARR with heavy `actions` usage and usage up 6%.
-- It composes Firecrawl's existing `actions`, screenshot, scrape, and interact/browser primitives instead of pretending those primitives do not exist.
+- It composes Firecrawl's existing `actions`, screenshot, HTML, markdown, and scrape primitives instead of pretending those primitives do not exist.
 - It gives Firecrawl a product-quality observability story for workflows that currently fail as a black box.
 
 ## Problem
@@ -213,6 +213,7 @@ At each checkpoint, request observable output:
 
 - screenshot
 - markdown
+- HTML for selector assertions
 - page metadata when available
 
 This is intentionally more expensive than a production implementation, but it is honest and buildable in 72 hours.
@@ -486,9 +487,9 @@ Build enough to make the value obvious:
    - JSON trace export.
    - Markdown debug report for support or teammates.
 
-6. **Seeded offline demo**
-   - Include a stored trace fixture so reviewers can see the UI without burning credits.
-   - Clearly label fixture mode vs live Firecrawl mode.
+6. **Live example workflows**
+   - Include three preloaded public-page examples.
+   - Always execute them through Firecrawl so the demo reflects real API behavior.
 
 ## What Not To Build
 
@@ -596,7 +597,7 @@ The demo can be credible without changing Firecrawl internals:
 - Request screenshot and markdown outputs.
 - Store trace results in local JSON or memory.
 - Build a single Next.js dashboard with form, timeline, inspector, and export.
-- Include fixture traces so the reviewer can see the product even without credits.
+- Include live example traces so the reviewer can exercise the product against public pages.
 - Keep the diagnosis rules deterministic and explainable.
 
 The code remains easy to walk through:
