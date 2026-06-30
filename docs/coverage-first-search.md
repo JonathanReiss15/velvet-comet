@@ -1,4 +1,6 @@
-# Product Decisions
+# Archived Product Option: Coverage-First Search
+
+This was an earlier product direction considered during discovery, not the final submission. The final shipped demo and one-page rationale are in `WRITEUP.md`, focused on Action Trace Workbench for feedback item #7.
 
 ## Decision
 

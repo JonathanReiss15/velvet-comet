@@ -8,7 +8,7 @@ The clean product definition:
 
 > Action Trace Workbench is a debugging layer for Firecrawl browser-action runs. It turns one opaque `SCRAPE_FAILED` into a step-by-step execution trace with the failed action, page state, screenshot, and suggested fix.
 
-This is the best differentiated bet if we do not want to compete directly with another coverage-search submission:
+This is the best differentiated bet for a narrow, defensible 72-hour submission:
 
 - It targets a concrete developer pain with a crisp before/after demo.
 - It maps to the largest support category: `error confusion / debugging help` is 214 of 535 support tickets in the last 90 days, roughly 40%.
@@ -99,7 +99,7 @@ That lands faster than a broad platform claim. A reviewer can immediately unders
 
 ### 4. It Differentiates From Coverage-First Search
 
-Coverage-first search is still a good product idea, but another candidate already built a deep version of it. Competing on the same wedge would push us toward a monorepo/eval/worker architecture contest.
+Coverage-first search is still a good product idea, but it is harder to prove credibly in a small local demo. A strong version needs broad query evaluation, coverage benchmarks, and ranking-quality evidence across many source classes.
 
 Action Trace Workbench lets us compete on a different axis:
 
@@ -539,9 +539,9 @@ Partially helped.
 
 The product does not add BYO proxies, but it helps determine whether a failure looks like bot protection, selector drift, page changes, or a normal timeout.
 
-## Why This Is Better Than Coverage-First Search For Differentiation
+## Why This Is Better Than Coverage-First Search For This Submission
 
-Coverage-First Search is a strong product bet, but it is now a crowded comparison point. Another candidate built a broad systems-heavy version with saturation, tests, API, CLI, web console, and evals.
+Coverage-First Search is a strong product bet, but a credible implementation depends on proving coverage and ranking quality across many query classes. That would push a 72-hour demo toward breadth, eval design, and scoring debates instead of one sharp customer workflow.
 
 Action Trace Workbench differentiates the submission:
 
@@ -550,9 +550,9 @@ Action Trace Workbench differentiates the submission:
 - more visual demo
 - stronger support-cost tie-in
 - clearer Firecrawl-specific developer experience
-- lower risk of looking like a weaker copy of another solution
+- lower risk of over-claiming search quality without enough evaluation data
 
-It also shows a valuable product instinct: the highest ARR item is not always the best take-home wedge if another solution already occupies it and if support data points to a repeatable pain elsewhere.
+It also shows a valuable product instinct: the highest ARR item is not always the best take-home wedge when support data points to a repeatable pain that can be demonstrated more honestly.
 
 ## Success Metrics
 
