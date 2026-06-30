@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const TraceModeSchema = z.enum(["live", "recorded"]);
+const TraceModeSchema = z.literal("live");
 const TraceStatusSchema = z.enum(["passed", "failed", "partial", "invalid"]);
 const StepStatusSchema = z.enum(["pending", "passed", "failed", "skipped"]);
 const DiagnosisCodeSchema = z.enum([

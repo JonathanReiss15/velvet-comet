@@ -385,7 +385,7 @@ export function CheckpointInspector({
           </div>
           {report ? (
             <PlainTag tone="orange">
-              {report.mode === "recorded" ? "Recorded" : "Live"}
+              Live
             </PlainTag>
           ) : null}
         </div>

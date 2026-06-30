@@ -13,10 +13,6 @@ type FirecrawlResponse = {
 export class FirecrawlTraceClient {
   constructor(private readonly apiKey = process.env.FIRECRAWL_API_KEY) {}
 
-  hasApiKey() {
-    return Boolean(this.apiKey);
-  }
-
   async scrapeWithActions(request: TraceRequestInput, actions: Array<Record<string, unknown>>) {
     if (!this.apiKey) throw new Error("FIRECRAWL_API_KEY is required for live mode.");
 

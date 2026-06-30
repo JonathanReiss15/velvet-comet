@@ -56,6 +56,15 @@ export function Workbench() {
       .then((response) => response.json())
       .then((data: ExamplesResponse) => {
         setExamples(data.examples);
+        const initialExample =
+          data.examples.find((example) => example.id === "selector-missing-books") ??
+          data.examples[0];
+        if (initialExample) {
+          setSelectedExampleId(initialExample.id);
+          setUrl(initialExample.url);
+          setActionsJson(JSON.stringify(initialExample.actions, null, 2));
+          setChecksJson(JSON.stringify(initialExample.checks, null, 2));
+        }
       })
       .catch(() => setError("Could not load examples."));
   }, []);

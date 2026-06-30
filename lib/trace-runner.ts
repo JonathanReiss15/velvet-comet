@@ -6,7 +6,6 @@ import {
 } from "@/lib/trace-analyzer";
 import { defaultFirecrawlOptions } from "@/lib/examples";
 import { FirecrawlTraceClient } from "@/lib/firecrawl-trace-client";
-import { recordedTrace } from "@/lib/recorded-trace";
 import type { TraceStreamEvent } from "@/lib/trace-events";
 import {
   normalizeActions,
@@ -28,8 +27,6 @@ export async function runTraceWithEvents(
   input: TraceRequestInput,
   onEvent?: EmitTraceEvent,
 ): Promise<TraceReport> {
-  if (input.mode === "recorded") return recordedTrace;
-
   const id = `trace_${Date.now().toString(36)}`;
   const firecrawl = { ...defaultFirecrawlOptions, ...input.firecrawl };
 
@@ -75,17 +72,6 @@ async function runLiveTrace(
     type: "trace.started",
     report: pendingTraceReport({ id, input, actions, createdAt, warnings }),
   });
-
-  if (!client.hasApiKey()) {
-    const report = firecrawlErrorReport({
-      id,
-      input,
-      createdAt,
-      message: "FIRECRAWL_API_KEY is required for live mode.",
-    });
-    await emitTraceEvent(onEvent, { type: "trace.completed", report });
-    return report;
-  }
 
   try {
     for (let index = 0; index < actions.length; index += 1) {

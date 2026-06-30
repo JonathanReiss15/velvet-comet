@@ -1,5 +1,3 @@
-import type { TraceReport } from "@/lib/trace-schema";
-
 export type Example = {
   id: string;
   label: string;
@@ -11,7 +9,6 @@ export type Example = {
 };
 
 export type ExamplesResponse = {
-  recordedTrace: TraceReport;
   examples: Example[];
 };
 

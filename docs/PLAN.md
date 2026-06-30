@@ -12,7 +12,7 @@ The demo is intentionally narrow:
 - inspect the first failed step
 - export JSON, Markdown, or a redacted support summary
 
-The first screen loads a bundled recorded trace so reviewers immediately see the completed product surface. Clicking **Run** executes the same workflow live when `FIRECRAWL_API_KEY` is present.
+The first screen preloads the Books to Scrape example request. Clicking **Run** executes the workflow live through Firecrawl using `FIRECRAWL_API_KEY` from `.env`.
 
 ## Product Bet
 
@@ -26,7 +26,7 @@ This is worth building because it addresses the largest support pattern in the s
 Next.js Workbench
   |
   | GET /api/examples
-  |   returns live examples + bundled recorded trace
+  |   returns live example requests
   |
   | POST /api/traces
   v
@@ -50,14 +50,11 @@ Trace Runner
 
 Prefix replay is more expensive than production runner instrumentation, but it is honest, externally buildable, and proves the product shape without Firecrawl internals.
 
-## Modes
+## Mode
 
-| Mode | Purpose |
-| --- | --- |
-| `recorded` | Bundled first-load trace for a deterministic interview demo. |
-| `live` | Calls Firecrawl `/v2/scrape` once per action prefix using the local `FIRECRAWL_API_KEY`. |
+`live` calls Firecrawl `/v2/scrape` once per action prefix using the local `FIRECRAWL_API_KEY`.
 
-The UI labels recorded traces separately from live traces. The cost/fidelity panel states the prefix-replay tradeoff directly.
+The cost/fidelity panel states the prefix-replay tradeoff directly.
 
 ## Checks
 
@@ -111,15 +108,14 @@ That would reduce cost, avoid replay drift, and make trace fidelity stronger. Th
 
 ## Modules
 
-- `components/workbench.tsx`: dashboard shell, recorded replay, live run flow, timeline, inspector, diagnosis, and redacted exports.
+- `components/workbench.tsx`: dashboard shell, live run flow, timeline, inspector, diagnosis, and redacted exports.
 - `lib/trace-schema.ts`: Zod schemas for actions, checks, trace reports, and modes.
 - `lib/examples.ts`: live example payloads.
-- `lib/recorded-trace.ts`: bundled first-load trace.
 - `lib/firecrawl-trace-client.ts`: `/v2/scrape` client for prefix replay.
 - `lib/trace-runner.ts`: live trace orchestration, HTML selector counting, report assembly.
 - `lib/trace-analyzer.ts`: deterministic diagnosis and suggested fixes.
 - `lib/report-export.ts`: Markdown, support summary, and redaction logic.
-- `lib/trace-store.ts`: in-memory trace storage including the bundled recorded trace.
+- `lib/trace-store.ts`: in-memory trace storage for completed runs.
 
 ## Non-Goals
 
@@ -132,10 +128,10 @@ That would reduce cost, avoid replay drift, and make trace fidelity stronger. Th
 
 ## Demo Script
 
-1. Start on the recorded trace.
-2. Show the before/after panel: one native-style failure vs step-level evidence.
-3. Click the failed step in the timeline.
-4. Show screenshot, text excerpt, raw response excerpt, and selector match count.
-5. Show diagnosis and suggested fix.
-6. Toggle redaction and export support summary.
-7. Optionally click **Run** to execute the same workflow live through Firecrawl.
+1. Start with the preloaded Books to Scrape request.
+2. Click **Run** to execute the workflow live through Firecrawl.
+3. Show the before/after panel: one native-style failure vs step-level evidence.
+4. Click the failed step in the timeline.
+5. Show screenshot, text excerpt, raw response excerpt, and selector match count.
+6. Show diagnosis and suggested fix.
+7. Toggle redaction and export support summary.
