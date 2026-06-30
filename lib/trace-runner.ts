@@ -7,6 +7,7 @@ import {
 import { defaultFirecrawlOptions } from "@/lib/examples";
 import { FirecrawlTraceClient } from "@/lib/firecrawl-trace-client";
 import { recordedTrace } from "@/lib/recorded-trace";
+import type { TraceStreamEvent } from "@/lib/trace-events";
 import {
   normalizeActions,
   TraceReportSchema,
@@ -17,7 +18,16 @@ import {
   type TraceStep,
 } from "@/lib/trace-schema";
 
+type EmitTraceEvent = (event: TraceStreamEvent) => void | Promise<void>;
+
 export async function runTrace(input: TraceRequestInput): Promise<TraceReport> {
+  return runTraceWithEvents(input);
+}
+
+export async function runTraceWithEvents(
+  input: TraceRequestInput,
+  onEvent?: EmitTraceEvent,
+): Promise<TraceReport> {
   if (input.mode === "recorded") return recordedTrace;
 
   const id = `trace_${Date.now().toString(36)}`;
@@ -28,54 +38,71 @@ export async function runTrace(input: TraceRequestInput): Promise<TraceReport> {
     actions = normalizeActions(input.actions);
   } catch (error) {
     if (error instanceof UnsupportedActionError) {
-      return unsupportedActionReport({
+      const report = unsupportedActionReport({
         id,
         input: { ...input, firecrawl },
         index: error.index,
         message: error.message,
       });
+      await emitTraceEvent(onEvent, { type: "trace.completed", report });
+      return report;
     }
     throw error;
   }
 
-  return runLiveTrace({ ...input, firecrawl }, actions, id);
+  return runLiveTrace({ ...input, firecrawl }, actions, id, onEvent);
 }
 
 async function runLiveTrace(
   input: TraceRequestInput,
   actions: FirecrawlAction[],
   id: string,
+  onEvent?: EmitTraceEvent,
 ): Promise<TraceReport> {
   const client = new FirecrawlTraceClient();
   const createdAt = new Date().toISOString();
   const startedAt = Date.now();
   const steps: TraceStep[] = [];
-  const warnings: string[] = [];
+  const warnings = actions.flatMap((action, index) =>
+    actionWarnings(action).map((warning) => `Step ${index + 1}: ${warning}`),
+  );
   let scrapeId: string | undefined;
   let diagnosis: TraceReport["diagnosis"] = null;
   let failedStepIndex: number | null = null;
   let firecrawlCalls = 0;
 
+  await emitTraceEvent(onEvent, {
+    type: "trace.started",
+    report: pendingTraceReport({ id, input, actions, createdAt, warnings }),
+  });
+
   if (!client.hasApiKey()) {
-    return firecrawlErrorReport({
+    const report = firecrawlErrorReport({
       id,
       input,
       createdAt,
       message: "FIRECRAWL_API_KEY is required for live mode.",
     });
+    await emitTraceEvent(onEvent, { type: "trace.completed", report });
+    return report;
   }
 
   try {
     for (let index = 0; index < actions.length; index += 1) {
       const action = actions[index];
-      warnings.push(
-        ...actionWarnings(action).map(
-          (warning) => `Step ${index + 1}: ${warning}`,
-        ),
-      );
       const startedAt = Date.now();
       let raw: unknown;
       let step: TraceStep;
+
+      await emitTraceEvent(onEvent, {
+        type: "step.started",
+        step: {
+          index,
+          action,
+          status: "pending",
+          durationMs: 0,
+        },
+      });
 
       try {
         raw = await client.scrapeWithActions(
@@ -119,7 +146,16 @@ async function runLiveTrace(
           action,
         });
         steps.push(step);
+        await emitTraceEvent(onEvent, {
+          type: "step.failed",
+          step,
+          diagnosis,
+          failedStepIndex,
+          summary: traceSummary(actions, steps, firecrawlCalls),
+        });
+        const skippedStart = steps.length;
         appendSkippedSteps(steps, actions, index + 1);
+        await emitSkippedSteps(onEvent, steps.slice(skippedStart));
         break;
       }
 
@@ -139,16 +175,30 @@ async function runLiveTrace(
           checkFailure: checkResult.failure,
         });
         steps.push(step);
+        await emitTraceEvent(onEvent, {
+          type: "step.failed",
+          step,
+          diagnosis,
+          failedStepIndex,
+          summary: traceSummary(actions, steps, firecrawlCalls),
+        });
+        const skippedStart = steps.length;
         appendSkippedSteps(steps, actions, index + 1);
+        await emitSkippedSteps(onEvent, steps.slice(skippedStart));
         break;
       }
 
       steps.push(step);
+      await emitTraceEvent(onEvent, {
+        type: "step.completed",
+        step,
+        summary: traceSummary(actions, steps, firecrawlCalls),
+      });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (steps.length === 0) {
-      return firecrawlErrorReport({
+      const report = firecrawlErrorReport({
         id,
         input,
         createdAt,
@@ -156,6 +206,8 @@ async function runLiveTrace(
         firecrawlCalls,
         message,
       });
+      await emitTraceEvent(onEvent, { type: "trace.completed", report });
+      return report;
     }
     const index = steps.length;
     const step: TraceStep = {
@@ -172,7 +224,16 @@ async function runLiveTrace(
       action: actions[index],
     });
     steps.push(step);
+    await emitTraceEvent(onEvent, {
+      type: "step.failed",
+      step,
+      diagnosis,
+      failedStepIndex,
+      summary: traceSummary(actions, steps, firecrawlCalls),
+    });
+    const skippedStart = steps.length;
     appendSkippedSteps(steps, actions, index + 1);
+    await emitSkippedSteps(onEvent, steps.slice(skippedStart));
   }
 
   if (!diagnosis && steps.length === actions.length) {
@@ -186,6 +247,13 @@ async function runLiveTrace(
         extraEvidence: [
           `Final text excerpt length: ${(lastStep.textExcerpt ?? "").trim().length}`,
         ],
+      });
+      await emitTraceEvent(onEvent, {
+        type: "step.failed",
+        step: lastStep,
+        diagnosis,
+        failedStepIndex,
+        summary: traceSummary(actions, steps, firecrawlCalls),
       });
     }
   }
@@ -201,14 +269,7 @@ async function runLiveTrace(
     durationMs: Date.now() - startedAt,
     scrapeId,
     failedStepIndex,
-    summary: {
-      stepsPlanned: actions.length,
-      stepsCompleted: steps.filter((step) => step.status === "passed").length,
-      firecrawlCalls,
-      screenshotsCaptured: steps.filter((step) =>
-        Boolean(step.screenshotBase64),
-      ).length,
-    },
+    summary: traceSummary(actions, steps, firecrawlCalls),
     diagnosis,
     warnings,
     actions: input.actions,
@@ -217,7 +278,77 @@ async function runLiveTrace(
     steps,
   };
 
-  return TraceReportSchema.parse(report);
+  const parsedReport = TraceReportSchema.parse(report);
+  await emitTraceEvent(onEvent, {
+    type: "trace.completed",
+    report: parsedReport,
+  });
+  return parsedReport;
+}
+
+async function emitTraceEvent(
+  onEvent: EmitTraceEvent | undefined,
+  event: TraceStreamEvent,
+) {
+  if (onEvent) await onEvent(event);
+}
+
+async function emitSkippedSteps(
+  onEvent: EmitTraceEvent | undefined,
+  steps: TraceStep[],
+) {
+  if (steps.length === 0) return;
+  await emitTraceEvent(onEvent, { type: "steps.skipped", steps });
+}
+
+function pendingTraceReport(params: {
+  id: string;
+  input: TraceRequestInput;
+  actions: FirecrawlAction[];
+  createdAt: string;
+  warnings: string[];
+}): TraceReport {
+  return {
+    id: params.id,
+    status: "partial",
+    mode: "live",
+    url: params.input.url,
+    createdAt: params.createdAt,
+    durationMs: 0,
+    failedStepIndex: null,
+    summary: {
+      stepsPlanned: params.actions.length,
+      stepsCompleted: 0,
+      firecrawlCalls: 0,
+      screenshotsCaptured: 0,
+    },
+    diagnosis: null,
+    warnings: params.warnings,
+    actions: params.input.actions,
+    checks: params.input.checks,
+    firecrawl: params.input.firecrawl,
+    steps: params.actions.map((action, index) => ({
+      index,
+      action,
+      status: "pending",
+      durationMs: 0,
+    })),
+  };
+}
+
+function traceSummary(
+  actions: FirecrawlAction[],
+  steps: TraceStep[],
+  firecrawlCalls: number,
+): TraceReport["summary"] {
+  return {
+    stepsPlanned: actions.length,
+    stepsCompleted: steps.filter((step) => step.status === "passed").length,
+    firecrawlCalls,
+    screenshotsCaptured: steps.filter((step) =>
+      Boolean(step.screenshotBase64),
+    ).length,
+  };
 }
 
 function extractRawError(raw: unknown) {

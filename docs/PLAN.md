@@ -8,6 +8,7 @@ The demo is intentionally narrow:
 
 - paste a URL and Firecrawl-style `actions` JSON
 - run the workflow through live Firecrawl prefix replay
+- stream timeline updates as each prefix checkpoint completes
 - inspect the first failed step
 - export JSON, Markdown, or a redacted support summary
 
@@ -32,15 +33,18 @@ Next.js Workbench
 Trace Runner
   |
   +-- validate action/check schema
+  +-- emit trace.started with pending timeline rows
   +-- for each action index N:
   |     +-- POST /v2/scrape with actions[0..N]
   |     +-- request markdown, html, and screenshot
   |     +-- parse returned HTML for selector assertions
   |     +-- capture metadata, duration, screenshot, text excerpt, raw response excerpt
+  |     +-- emit step.completed or step.failed
   |     +-- stop on first action failure or failed check
   |
   +-- classify the failure deterministically
   +-- save report in memory
+  +-- emit trace.completed
   +-- return report
 ```
 
@@ -70,9 +74,12 @@ The important implementation change is that selector checks are no longer cosmet
 
 Routes:
 
+- `POST /api/traces/stream`
 - `GET /api/traces/:id/export?format=json`
 - `GET /api/traces/:id/export?format=markdown`
 - `GET /api/traces/:id/export?format=support`
+
+`POST /api/traces/stream` returns SSE-formatted chunks over a fetch stream. The app uses fetch streaming rather than native `EventSource` so it can preserve the existing JSON POST body.
 
 Each route accepts `redacted=true`.
 

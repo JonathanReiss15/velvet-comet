@@ -37,7 +37,7 @@ npm run dev
 
 Then open `http://localhost:3000`. The app starts on a bundled recorded trace, so the reviewer can inspect the complete failure report without a Firecrawl API key or credits. The **Replay demo** button reloads that recorded trace and walks the selection back to the failed step.
 
-Live runs are optional. Add `FIRECRAWL_API_KEY=...` to `.env`, choose a scenario, and click **Run**. The same workflow executes through Firecrawl prefix replay. I also added `npm test`, `npm run typecheck`, and `npm run build` as the verification path.
+Live runs are optional. Add `FIRECRAWL_API_KEY=...` to `.env`, choose a scenario, and click **Run**. The same workflow executes through Firecrawl prefix replay. The run streams back as `text/event-stream`, so the timeline hydrates step-by-step instead of waiting for the final report. I also added `npm test`, `npm run typecheck`, and `npm run build` as the verification path.
 
 ## What I deliberately did not build
 
@@ -61,6 +61,8 @@ For the code walkthrough, I would start at `app/api/traces/route.ts`, then follo
 - `lib/firecrawl-trace-client.ts` for Firecrawl API calls
 - `lib/trace-analyzer.ts` for deterministic diagnosis rules
 - `components/workbench.tsx` for the UI flow
+
+The progressive path is `app/api/traces/stream/route.ts`. It accepts the same POST body as the JSON route and emits events such as `trace.started`, `step.started`, `step.completed`, `step.failed`, and `trace.completed`. I used fetch streaming rather than browser `EventSource` because `EventSource` cannot send the JSON POST body this workflow needs.
 
 The current demo stores traces in memory. That is enough for local export and reload during the session; production should use durable trace storage with retention and redaction controls because screenshots and markdown can contain sensitive page data.
 

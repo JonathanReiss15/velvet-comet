@@ -37,6 +37,7 @@ import { TraceSetup } from "@/components/workbench/trace-setup";
 import type { Example, ExamplesResponse } from "@/components/workbench/types";
 import { recordedTrace as bundledRecordedTrace } from "@/lib/recorded-trace";
 import { redactTraceReport } from "@/lib/report-export";
+import type { TraceStreamEvent } from "@/lib/trace-events";
 import type { TraceReport } from "@/lib/trace-schema";
 import { cn } from "@/lib/utils";
 
@@ -134,19 +135,70 @@ export function Workbench() {
 
     try {
       const payload = buildTracePayload();
-      const response = await fetch("/api/traces", {
+      const response = await fetch("/api/traces/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Trace request failed.");
-      setReport(data);
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Trace request failed.");
+      }
+      if (!response.body) throw new Error("Trace stream was empty.");
+
+      await readTraceStream(response.body, handleTraceEvent);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setIsRunning(false);
     }
+  }
+
+  function handleTraceEvent(event: TraceStreamEvent) {
+    if (event.type === "trace.started") {
+      setReport(event.report);
+      setSelectedStepIndex(0);
+      return;
+    }
+
+    if (event.type === "step.started") {
+      setReport((current) => updateStepInReport(current, event.step));
+      setSelectedStepIndex(event.step.index);
+      return;
+    }
+
+    if (event.type === "step.completed") {
+      setReport((current) =>
+        updateStepInReport(current, event.step, { summary: event.summary }),
+      );
+      return;
+    }
+
+    if (event.type === "step.failed") {
+      setReport((current) =>
+        updateStepInReport(current, event.step, {
+          status: "failed",
+          failedStepIndex: event.failedStepIndex,
+          diagnosis: event.diagnosis,
+          summary: event.summary,
+        }),
+      );
+      setSelectedStepIndex(event.failedStepIndex);
+      return;
+    }
+
+    if (event.type === "steps.skipped") {
+      setReport((current) => updateStepsInReport(current, event.steps));
+      return;
+    }
+
+    if (event.type === "trace.completed") {
+      setReport(event.report);
+      setSelectedStepIndex(event.report.failedStepIndex ?? 0);
+      return;
+    }
+
+    setError(event.error);
   }
 
   async function copyReport() {
@@ -271,6 +323,89 @@ export function Workbench() {
       </div>
     </main>
   );
+}
+
+async function readTraceStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: TraceStreamEvent) => void,
+) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    buffer = flushTraceStreamBuffer(buffer, onEvent);
+  }
+
+  buffer += decoder.decode();
+  flushTraceStreamBuffer(`${buffer}\n\n`, onEvent);
+}
+
+function flushTraceStreamBuffer(
+  buffer: string,
+  onEvent: (event: TraceStreamEvent) => void,
+) {
+  const blocks = buffer.split("\n\n");
+  const remainder = blocks.pop() ?? "";
+
+  for (const block of blocks) {
+    const event = parseTraceStreamEvent(block);
+    if (event) onEvent(event);
+  }
+
+  return remainder;
+}
+
+function parseTraceStreamEvent(block: string): TraceStreamEvent | null {
+  const data = block
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s?/, ""))
+    .join("\n");
+
+  return data ? (JSON.parse(data) as TraceStreamEvent) : null;
+}
+
+function updateStepInReport(
+  report: TraceReport | null,
+  step: TraceReport["steps"][number],
+  overrides: Partial<TraceReport> = {},
+) {
+  if (!report) return report;
+  return {
+    ...report,
+    ...overrides,
+    steps: replaceStep(report.steps, step),
+  };
+}
+
+function updateStepsInReport(
+  report: TraceReport | null,
+  steps: TraceReport["steps"],
+) {
+  if (!report) return report;
+  return {
+    ...report,
+    steps: steps.reduce(replaceStep, report.steps),
+  };
+}
+
+function replaceStep(
+  steps: TraceReport["steps"],
+  step: TraceReport["steps"][number],
+) {
+  const nextSteps = [...steps];
+  const existingIndex = nextSteps.findIndex((item) => item.index === step.index);
+  if (existingIndex >= 0) {
+    nextSteps[existingIndex] = step;
+  } else {
+    nextSteps.push(step);
+    nextSteps.sort((a, b) => a.index - b.index);
+  }
+  return nextSteps;
 }
 
 function Sidebar() {
